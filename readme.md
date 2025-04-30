@@ -123,16 +123,3 @@ The architecture is designed to be extensible:
 4. The extension will automatically execute the action for you
 5. Access settings via the extension icon in Chrome's toolbar
 
-## Privacy Considerations
-
-- All data is stored locally by default
-- OpenAI API calls are made without sharing personal identifiers
-- You can clear collected data at any time from the extension popup
-
-## License
-
-MIT License - Feel free to use, modify, and distribute this software.
-
----
-
-Developed as a demonstration of predictive UI for enhancing SaaS product experiences.
