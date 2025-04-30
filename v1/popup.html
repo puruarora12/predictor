@@ -1,0 +1,88 @@
+// popup.js - Script for the extension popup
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Load stats and settings
+    loadStats();
+    loadSettings();
+    
+    // Set up toggle listeners
+    document.getElementById('toggle-suggestions').addEventListener('change', function() {
+        saveSetting('enableSuggestions', this.checked);
+    });
+    
+    document.getElementById('toggle-autocomplete').addEventListener('change', function() {
+        saveSetting('enableAutocomplete', this.checked);
+    });
+    
+    document.getElementById('toggle-automation').addEventListener('change', function() {
+        saveSetting('enableAutomation', this.checked);
+    });
+    
+    document.getElementById('toggle-contests').addEventListener('change', function() {
+        saveSetting('enableContests', this.checked);
+    });
+    
+    // Set up clear data button
+    document.getElementById('clear-data').addEventListener('click', clearUserData);
+});
+
+function loadStats() {
+    // Fetch stats from background page
+    chrome.runtime.sendMessage({type: 'get_stats'}, (response) => {
+        if (response && response.stats) {
+            document.getElementById('interactions-count').textContent = response.stats.interactions || 0;
+            document.getElementById('predictions-count').textContent = response.stats.predictions || 0;
+            document.getElementById('time-saved').textContent = `${response.stats.timeSaved || 0} mins`;
+        }
+    });
+}
+
+function loadSettings() {
+    // Load settings from storage
+    chrome.storage.sync.get([
+        'enableSuggestions',
+        'enableAutocomplete',
+        'enableAutomation',
+        'enableContests'
+    ], (settings) => {
+        // Set default to true if setting doesn't exist
+        document.getElementById('toggle-suggestions').checked = 
+            settings.enableSuggestions !== undefined ? settings.enableSuggestions : true;
+            
+        document.getElementById('toggle-autocomplete').checked = 
+            settings.enableAutocomplete !== undefined ? settings.enableAutocomplete : true;
+            
+        document.getElementById('toggle-automation').checked = 
+            settings.enableAutomation !== undefined ? settings.enableAutomation : true;
+            
+        document.getElementById('toggle-contests').checked = 
+            settings.enableContests !== undefined ? settings.enableContests : true;
+    });
+}
+
+function saveSetting(key, value) {
+    // Save setting to storage
+    chrome.storage.sync.set({ [key]: value }, () => {
+        // Notify background script about setting change
+        chrome.runtime.sendMessage({
+            type: 'setting_changed',
+            key: key,
+            value: value
+        });
+    });
+}
+
+function clearUserData() {
+    if (confirm('Are you sure you want to clear all collected data? This will reset all predictions and learned patterns.')) {
+        chrome.runtime.sendMessage({type: 'clear_data'}, (response) => {
+            if (response && response.success) {
+                // Reset displayed stats
+                document.getElementById('interactions-count').textContent = '0';
+                document.getElementById('predictions-count').textContent = '0';
+                document.getElementById('time-saved').textContent = '0 mins';
+                
+                alert('All collected data has been cleared.');
+            }
+        });
+    }
+}
