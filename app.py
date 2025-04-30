@@ -159,7 +159,7 @@ def execute_api():
 
 def predict_with_llm(context):
     """Use LLM to predict next action when ML is not confident"""
-    remaining, conf = rag_pattern_completion(user_histroy)
+    remaining, conf = (user_histroy)
     print("multi step pattern ", remaining, conf)
     if remaining:
         return jsonify({
