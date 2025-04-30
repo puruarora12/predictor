@@ -1,0 +1,11 @@
+export
+flask
+langchain
+flask_cors
+numpy
+langchain-community
+joblib
+scikit-learn
+openai
+playwright
+pinecone
