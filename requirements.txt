@@ -9,3 +9,4 @@ scikit-learn
 openai
 playwright
 pinecone
+pyreadline3

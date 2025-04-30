@@ -1,5 +1,6 @@
 # app.py - Flask API for LeetCode Helper
-
+import threading
+import pyreadline3 as readline  
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
@@ -41,6 +42,9 @@ INDEX_NAME = "predict"
 
 # if 'pattern' not in pinecone.list_indexes()[1]['name']:
 #     pinecone.create_index(name="pattern", dimension=3072, spec=ServerlessSpec(cloud="aws", region="us-east-1") )
+
+EMBED_DIM = 1536                             # text-embedding-3-large
+# pinecone.create_index(name='autocomplete', dimension=EMBED_DIM, spec=ServerlessSpec(cloud="aws", region="us-east-1") )
         
 index = pinecone.Index(INDEX_NAME)
 pattern_index = pinecone.Index("pattern")
@@ -156,6 +160,7 @@ def execute_api():
 def predict_with_llm(context):
     """Use LLM to predict next action when ML is not confident"""
     remaining, conf = rag_pattern_completion(user_histroy)
+    print("multi step pattern ", remaining, conf)
     if remaining:
         return jsonify({
             "message": "skip to {remaining}",
@@ -163,7 +168,7 @@ def predict_with_llm(context):
             "action": remaining
     })
     
-    time.sleep(2)
+    # time.sleep(2)
     print("getting results")
     results = retrieve_similar(user_histroy)
     
@@ -223,9 +228,9 @@ def predict_with_llm(context):
         return None
 
 
-MAX_PAT_LEN = 6          # we care about patterns up to this length
+MAX_PAT_LEN = 4          # we care about patterns up to this length
 MIN_SUFFIX  = 2          # only store if ≥2 steps remain
-PAT_THRESH  = 3          # use freq for confidence later
+PAT_THRESH  = 1          # use freq for confidence later
 
 def upsert_pattern_examples(history: list[str]):
     """
@@ -297,11 +302,90 @@ def rag_pattern_completion(history):
 def monitor_network():
     data = request.json
     data['timestamp'] = time.time()
+    payload = request.json
+    short, vec = embed_network_event(payload)
+    pinecone.Index(INDEX_NAME).upsert([(short, vec, {"ts": time.time()})])
     return jsonify({'status': 'success'})
 
 
-# Initialize app data
-initialize_app()
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+
+def server_autocomplete(partial: str) -> dict:
+    """
+    Given a partial command typed in the server console,
+    return {'intent': …, 'completion': …, 'alts': {commands:[], network:[]}}
+    """
+    q_vec = embed_text(partial)
+    # oprint(f"q_vec : {q_vec}\n")
+
+    cmd_hits = pinecone.Index('autocomplete').query(
+        vector=q_vec, top_k=TOP_K, include_metadata=False).matches
+    net_hits = pinecone.Index(INDEX_NAME).query(
+        vector=q_vec, top_k=TOP_K, include_metadata=False).matches
+
+    prompt = f"""
+    USER PARTIAL: `{partial}`
+
+    ### NEARBY COMMANDS
+    {chr(10).join(f"- {m.id}" for m in cmd_hits)}
+
+    ### RELATED NETWORK EVENTS
+    {chr(10).join(f"- {m.id}" for m in net_hits)}
+
+    TASK 1 » Summarise in ≤12 words what the user wants to do next.
+    TASK 2 » Provide the best single-line command to achieve it.
+    FORMAT:
+    intent: <summary>
+    completion: <command>
+    """.strip()
+
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+    lines = llm.invoke(prompt).content.splitlines()
+    output = {k:v.strip() for k,v in (line.split(":",1) for line in lines)}
+
+    return {
+        "intent": output.get("intent", "").strip(),
+        "completion": output.get("completion", "").strip(),
+        "alts": {
+            "commands": [m.id for m in cmd_hits],
+            "network":  [m.id for m in net_hits],
+        }
+    }
+
+TOP_K      = 5
+
+def embed_text(text: str) -> List[float]:
+    """One-liner around OpenAIEmbeddings for readability."""
+    return embedding_model.embed_query(text)
+
+def embed_network_event(ev: dict):
+    """
+    Turn a raw network payload (the one you already POST from the extension)
+    into a short string + embedding suitable for similarity search.
+    """
+    short = f"{ev['method']} {ev['pathname']} {ev.get('operation', '')}".strip()
+    return short, embed_text(short)
+
+
+
+name = 'autocomplete'
+
+
+def cli_loop():
+    print("🔧  Autocomplete CLI — type partial commands (Ctrl-D to quit)\n")
+    try:
+        while True:
+            partial = input("› ").strip()
+            if not partial:
+                continue
+
+            result = server_autocomplete(partial)
+            print(f"   intent     → {result['intent']}")
+            print(f"   completion → {result['completion']}\n")
+    except (EOFError, KeyboardInterrupt):
+        print("\nbye!")
+
+if __name__ == "__main__":
+    initialize_app()          # ← whatever you already call
+    threading.Thread(target=cli_loop, daemon=True).start()
+    app.run(host="0.0.0.0", port=5000, debug=True)

@@ -2,6 +2,7 @@ class LeetCodeHelperBackend {
     constructor() {
         this.pythonBackendUrl = 'http://localhost:5000'; // Your Python backend
         this.activeConnections = {};
+        this.commandHistory = []; // Local cache of recent commands
         this.setupMessageListeners();
     }
 
@@ -93,24 +94,91 @@ class LeetCodeHelperBackend {
             case 'save_automation':
                 this.saveAutomation(message, tabId);
                 break;
+                
+            case 'store_command':
+                this.storeCommand(message.command);
+                break;
         }
     }
 
     handleAutocompleteRequest(request, port) {
-        fetch(`${this.pythonBackendUrl}/api/autocomplete`, {
+        // First check for immediate local matches
+        const localMatch = this.findLocalAutocomplete(request.partial_command);
+        
+        if (localMatch) {
+            // Return immediately with local match
+            port.postMessage({
+                type: 'autocomplete_suggestion',
+                suggestion: localMatch,
+                partial_command: request.partial_command
+            });
+        }
+        
+        // Still request from backend for more sophisticated matching
+        fetch(`${this.pythonBackendUrl}/api/command/autocomplete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ partial_command: request.partial_command })
         })
         .then(response => response.json())
         .then(data => {
-            port.postMessage({
-                type: 'autocomplete_suggestion',
-                suggestion: data.suggestion,
-                partial_command: request.partial_command
-            });
+            // Only send if we have a completion and it's better than local
+            if (data.completion && (!localMatch || data.completion.length > localMatch.length)) {
+                port.postMessage({
+                    type: 'autocomplete_suggestion',
+                    suggestion: data.completion,
+                    partial_command: request.partial_command
+                });
+            }
         })
-        .catch(error => console.error('Error getting autocomplete:', error));
+        .catch(error => {
+            console.error('Error getting autocomplete:', error);
+            // If backend fails but we have a local match, ensure we still send it
+            if (localMatch && !port.sender.disconnected) {
+                port.postMessage({
+                    type: 'autocomplete_suggestion',
+                    suggestion: localMatch,
+                    partial_command: request.partial_command
+                });
+            }
+        });
+    }
+    
+    findLocalAutocomplete(partialCommand) {
+        if (!partialCommand || partialCommand.length < 2) return null;
+        
+        // Simple prefix matching from local history
+        for (const cmd of this.commandHistory) {
+            if (cmd.toLowerCase().startsWith(partialCommand.toLowerCase()) && 
+                cmd.length > partialCommand.length) {
+                return cmd;
+            }
+        }
+        return null;
+    }
+    
+    storeCommand(command) {
+        if (!command || command.length < 2) return;
+        
+        // Update local cache (avoid duplicates, keep most recent at start)
+        const index = this.commandHistory.indexOf(command);
+        if (index !== -1) {
+            this.commandHistory.splice(index, 1);
+        }
+        this.commandHistory.unshift(command);
+        this.commandHistory = this.commandHistory.slice(0, 50); // Limit size
+        
+        // Send to backend for vector storage
+        fetch(`${this.pythonBackendUrl}/api/command/store`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: command })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Command stored in backend:', data);
+        })
+        .catch(error => console.error('Error storing command:', error));
     }
 
     executeApiCall(request, port) {
