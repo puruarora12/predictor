@@ -1,125 +1,69 @@
-# LeetCode Helper - AI-Powered Productivity Enhancement
+## LeetCode Helper — What it is
 
-## Overview
+A small helper that **learns what you usually do on LeetCode** and then:
 
-LeetCode Helper is a Chrome extension that monitors your interactions within the LeetCode platform and uses machine learning to predict your next actions. By offering timely suggestions via a minimally invasive "Press Tab" UI, the extension helps reduce friction and saves you valuable time when solving coding problems.
+* **Completes** the command you’re typing in the server’s command-line.
+* **Tells** you what it thinks you want to do (“intent”).
+* **Suggests skipping** the boring middle steps if you keep repeating the same workflow.
 
-## Features
+You run a tiny Flask server; a Chrome extension streams what you click and which network calls fire.  
+Nothing is stored online except anonymous vectors in your own Pinecone account.
 
-### 1. Tab Suggestions
-- Predicts your next action based on interaction patterns
-- Shows a subtle overlay with "Press Tab to [action]" when confidence is high
-- Automatically executes the action when Tab is pressed
+---
 
-### 2. Command Bar Autocomplete
-- Monitors what you type in search/command bars
-- Suggests completions based on your past searches and common patterns
-- Uses LLM to generate context-aware suggestions even for new queries
+## How it works (in one minute)
 
-### 3. Automation Detection
-- Identifies repetitive sequences of actions you perform
-- Offers to automate these sequences for future use
-- Creates shortcuts for multi-step processes you commonly use
+1. **Browser side**  
+   *A content script* watches every click / page change / `fetch` request and sends a short text description to your Flask server.
 
-### 4. Contest Reminders
-- Learns your contest participation patterns
-- Reminds you of upcoming contests at your preferred times
-- Gets smarter over time by analyzing when you actually participate
+2. **Server side** (`app.py`)  
+   * Keeps a rolling list of your last few actions.  
+   * After each new action it stores  
+     `last 3 steps  +  command-you-typed  →  next step`  
+     as an embedding in Pinecone.
+   * When you start typing a command in the CLI it:
+     1. Finds similar **contexts** and **partials** in Pinecone.  
+     2. Feeds those examples to GPT-4o.  
+     3. Prints  
+        ```
+        intent     → submit solution
+        completion → submit
+        ```
+     4. If lots of past examples end the same way it also prints  
+        `⏩  You often end with “submit”. Skip 2 steps?`
 
-## Technical Architecture
+---
 
-The solution consists of three main components:
+### Tiny architecture sketch
 
-1. **Chrome Extension**:
-   - Content Script: Injects UI overlay and monitors user interactions
-   - Background Script: Processes data and communicates with backend
-   - Popup UI: Provides user-configurable settings and stats
+```
+Chrome tab      background.js            Flask server           Pinecone
+(click, fetch) ───────────────► /monitor ───────────────► (vectors)
+                                  ▲                ▲
+                                  │ autocomplete   │ store patterns
+                                  └────────────────┘
+```
 
-2. **Python Backend**:
-   - Flask API: Processes requests from the extension
-   - Machine Learning: RandomForest classifier for action prediction
-   - LangChain + OpenAI: Advanced LLM-based predictions and autocomplete
-   - User Data Store: Persistent storage of interaction patterns
+---
 
-3. **Prediction System**:
-   - Hybrid approach combining traditional ML with LLM capabilities
-   - Confidence-based suggestion surfacing
-   - Continuous learning from user feedback
+## How to use it
 
-## Implementation Details
+| Step | What to do |
+|------|------------|
+| **1. Clone & install** | ```bash<br>git clone …<br>cd server<br>python -m venv .venv && source .venv/bin/activate<br>pip install -r requirements.txt<br>export OPENAI_API_KEY=…<br>export PINECONE_API_KEY=…<br>python app.py``` |
+| **2. Load the extension** | Open `chrome://extensions` → “Load unpacked” → select the `extension/` folder. |
+| **3. Open LeetCode** | Keep a tab open; the extension quietly logs your navigation. |
+| **4. Use the CLI** | In the server terminal type partial commands:<br>```<br>› run t<br>intent     → run tests<br>completion → run tests<br>⏩  You often end with “submit”. Skip 2 steps?<br>``` |
+| **5. Repeat** | The more you use it, the smarter the completions become. |
 
-### Data Collection
+*Prerequisites: Python 3.10+, Chrome, OpenAI & Pinecone API keys.*
 
-The extension monitors:
-- Network requests (API calls)
-- UI interactions (clicks, form submissions)
-- Page navigation events
-- Timing patterns (when certain actions are performed)
+---
 
-### ML Prediction Pipeline
+### Change the defaults?
 
-1. **Feature Extraction**:
-   - Recent sequence of actions
-   - Current page context
-   - Focused element information
-   - Historical patterns
+* `CTX_LEN` – how many recent steps define “context” (default 3).  
+* `TOP_K` – how many neighbours to fetch from Pinecone (default 5).  
+* `JOIN` – separator between steps (`" → "`).  
 
-2. **Prediction Models**:
-   - Primary: RandomForest classifier trained on user data
-   - Backup: LLM-based prediction for novel situations
-   - Confidence thresholds to ensure high-quality suggestions
-
-3. **Action Execution**:
-   - Mapping predictions to executable actions
-   - Handling navigation, form submissions, and API calls
-
-### Extensibility
-
-The architecture is designed to be extensible:
-- New prediction features can be added without changing the core system
-- Different SaaS applications could be supported with minimal changes
-- The ML models can be swapped or enhanced as needed
-
-## Future Improvements
-
-1. **Enhanced UI Integration**:
-   - More native-feeling suggestions integrated into LeetCode's UI
-   - Keyboard shortcut customization
-
-2. **Advanced ML Capabilities**:
-   - Incorporate transformer-based models for sequence prediction
-   - Add reinforcement learning from user feedback
-   - Implement collaborative filtering using anonymized pattern data
-
-3. **Expanded Feature Set**:
-   - Code template suggestions based on problem type
-   - Time management recommendations
-   - Integration with other development tools
-
-4. **Scalability**:
-   - Cloud-based backend for multi-user support
-   - Efficient data storage for years of interaction history
-   - Privacy-preserving federated learning
-
-## Installation and Setup
-
-1. Clone the repository
-2. Set up the Python backend:
-   ```
-   pip install -r requirements.txt
-   export OPENAI_API_KEY="your_api_key_here"
-   python app.py
-   ```
-3. Load the Chrome extension:
-   - Open Chrome and navigate to `chrome://extensions/`
-   - Enable Developer Mode
-   - Click "Load unpacked" and select the extension directory
-
-## Usage
-
-1. Navigate to LeetCode and use the platform as normal
-2. Watch for the subtle "Press Tab" suggestions
-3. When you see a suggestion that matches your intent, press Tab
-4. The extension will automatically execute the action for you
-5. Access settings via the extension icon in Chrome's toolbar
-
+Open `app.py`, tweak the constants at the top, restart the server.
