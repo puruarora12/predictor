@@ -50,10 +50,10 @@ Chrome tab      background.js            Flask server           Pinecone
 
 | Step | What to do |
 |------|------------|
-| **1. Clone & install** | ```bash<br>git clone …<br>cd server<br>python -m venv .venv && source .venv/bin/activate<br>pip install -r requirements.txt<br>export OPENAI_API_KEY=…<br>export PINECONE_API_KEY=…<br>python app.py``` |
-| **2. Load the extension** | Open `chrome://extensions` → “Load unpacked” → select the `extension/` folder. |
+| **1. Clone & install** | ```bash<br>git clone …<br>cd server<br>python -m venv .venv && source .venv/bin/activate<br>pip install -r requirements.txt<br> Set OPEN_API_KEY and PINECONE_API_KEY in env varaibles` |
+| **2. Load the extension** | Open `chrome://extensions` → “Load unpacked” → select the `predictor` folder. |
 | **3. Open LeetCode** | Keep a tab open; the extension quietly logs your navigation. |
-| **4. Use the CLI** | In the server terminal type partial commands:<br>```<br>› run t<br>intent     → run tests<br>completion → run tests<br>⏩  You often end with “submit”. Skip 2 steps?<br>``` |
+| **4. Use the CLI** | 'python app.py' to run the server, you can use this CLI to try to use the autocomplet and suggestions feature.
 | **5. Repeat** | The more you use it, the smarter the completions become. |
 
 *Prerequisites: Python 3.10+, Chrome, OpenAI & Pinecone API keys.*
